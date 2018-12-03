@@ -15,9 +15,7 @@ class PyTorchModel(object):
 
     # Override forward pass and get layer order and info
     self.trace = self.trace_net(self.network)
-    print(self.trace)
     self.network(self.input)
-    print(self.trace)
 
   def __repr__(self):
 
@@ -68,6 +66,9 @@ class PyTorchModel(object):
         child.forward = types.MethodType(new_method, child)
     return trace 
 
+  def format_trace(self):
+    pass
+
   def display_diagram(self):
     self.trace
 
@@ -79,8 +80,8 @@ class PyTorchModel(object):
   def summarize_trace(self):
     # Sumamrize
     for i, (net, args, kwargs, output) in enumerate(self.trace):
-        print(f"Layer {i}")
-        print("-" * 10)
+        print(f"Layer {i}:")
+        # print("-" * 10)
         print("Network: ", net)
         print("Parameters: ", [p.shape for p in net.parameters()])
         print("Arg Dimesions: ", [x.shape for x in args])
