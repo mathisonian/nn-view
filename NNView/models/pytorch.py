@@ -134,28 +134,30 @@ class PyTorchModel(object):
         print("-" * 10)
 
 
-class Net(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
-        super(Net, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_size, num_classes)
-        self.c1 = nn.Conv1d(16, 33, 3, stride=2)
 
-    def forward(self, x):
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.c1(torch.randn(20, 16, 50))
-        return out
+## TESTING
+# class Net(nn.Module):
+#     def __init__(self, input_size, hidden_size, num_classes):
+#         super(Net, self).__init__()
+#         self.fc1 = nn.Linear(input_size, hidden_size)
+#         self.relu = nn.ReLU()
+#         self.fc2 = nn.Linear(hidden_size, num_classes)
+#         self.c1 = nn.Conv1d(16, 33, 3, stride=2)
 
-input_size = 784
-hidden_size = 500
-num_classes = 10
+#     def forward(self, x):
+#         out = self.fc1(x)
+#         out = self.relu(out)
+#         out = self.fc2(out)
+#         out = self.c1(torch.randn(20, 16, 50))
+#         return out
 
-net = Net(input_size, hidden_size, num_classes)
-net_input = torch.randn(input_size)
-ptm = PyTorchModel(net, net_input)
+# input_size = 784
+# hidden_size = 500
+# num_classes = 10
 
-## TRY for nn.Sequential type
-import pdb; pdb.set_trace()
+# net = Net(input_size, hidden_size, num_classes)
+# net_input = torch.randn(input_size)
+# ptm = PyTorchModel(net, net_input)
+
+# ## TRY for nn.Sequential type
+# import pdb; pdb.set_trace()
