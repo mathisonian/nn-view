@@ -15,6 +15,9 @@ from NNView.layers.layer import Layer
 LAYER_TYPES = ['Linear', 'Conv']
 LAYER_TYPES_FEATURES = [('in_features', 'out_features'), ('in_channels', '')]
 
+min_conv_size = 20
+max_conv_size = 150
+
 class PyTorchModel(object):
   def __init__(self, net, net_input):
     self.network = net
@@ -38,7 +41,7 @@ class PyTorchModel(object):
     max_channel_size = 0
     max_layer_height = 0
 
-    filter_offset_size = 10
+    filter_offset_size = 5
 
     for layer in self.trace:
       if 'Conv' in layer.type:
@@ -49,15 +52,21 @@ class PyTorchModel(object):
         if layer.input_shape > max_input_size:
           max_input_size = layer.input_shape
       else:
-        print(layer.input_shape)
+        # print(layer.input_shape)
         if layer.input_shape > max_linear_size:
           max_linear_size = layer.input_shape
+
+    channel_factor = 1 if max_channel_size == 0 else math.log(max_channel_size)
+
+    print(channel_factor)
 
     layer_offset = 0
     vertical_offset = 0
     svg_width = 0
     svg_height = 500
-    groups = []
+    conv_group = []
+    annotation_group = []
+    linear_group = []
     linear_layer_width = 50
     max_group_height = None
 
@@ -65,6 +74,8 @@ class PyTorchModel(object):
     last_offset = 0
 
     for layer in self.trace:
+
+      # print(layer.type, layer.input_shape, layer.output_shape, layer.channels)
       if layer.type == 'Linear':
         vertical_offset = 0
         padding = 30
@@ -75,32 +86,53 @@ class PyTorchModel(object):
         layer.effective_height = effective_height
         layer.effective_width = effective_width
         rect_top = np.interp(rect_height, [0, max_height], [svg_height / 2, (svg_height - max_height) / 2])
-        layer_offset += rect_height / 4
+        layer_offset += min(rect_height / 4, 30)
+        if max_group_height is None:
+          layer_offset += effective_width / 2
 
 
         if last_layer is not None and 'Linear' in last_layer.type:
-          groups.append(g(
+          annotation_group.append(g(
             line(
               x1=str(layer_offset - effective_width / 2 + 20),
-              y1=str(svg_height / 2 - effective_height / 2),
-              x2=str(last_offset - last_layer.effective_width / 2 + 20),
-              y2=str(svg_height / 2 - last_layer.effective_height / 2),
+              y1=str(svg_height / 2 - effective_height / 2 + 5),
+              x2=str(last_offset - last_layer.effective_width / 2 + 25),
+              y2=str(svg_height / 2 - last_layer.effective_height / 2 + 5),
               stroke="black",
               strokeWidth="2"
             )
           ))
-          groups.append(g(
+          annotation_group.append(g(
             line(
-              x1=str(layer_offset + effective_width / 2 + 20),
-              y1=str(svg_height / 2 + effective_height / 2),
+              x1=str(layer_offset + effective_width / 2 + 15),
+              y1=str(svg_height / 2 + effective_height / 2 + 5),
               x2=str(last_offset + last_layer.effective_width / 2 + 20),
               y2=str(svg_height / 2 + last_layer.effective_height / 2),
               stroke="black",
               strokeWidth="2"
             )
           ))
+        elif last_layer is not None and 'Conv' in last_layer.type:
+          annotation_group.append(
+            line(
+              x1=str(last_offset + last_layer.rect_width),
+              y1=str(last_layer.vertical_offset),
+              x2=str(layer_offset - effective_width / 2 + 20),
+              y2=str(svg_height / 2 - effective_height / 2 + 5),
+              stroke='#222'
+            )
+          )
+          annotation_group.append(
+            line(
+              x1=str(last_offset + last_layer.rect_width + (last_layer.channels - 1) * filter_offset_size),
+              y1=str(last_layer.vertical_offset + (last_layer.channels - 1) * filter_offset_size + last_layer.rect_width),
+              x2=str(layer_offset + effective_width / 2 + 15),
+              y2=str(svg_height / 2 + effective_height / 2 + 5),
+              stroke='#222'
+            )
+          )
 
-        groups.append(g(
+        linear_group.append(g(
           [rect(
             x=str((linear_layer_width - 20) / 2),
             y=str(rect_top),
@@ -113,15 +145,15 @@ class PyTorchModel(object):
           ),
           text(
             str(layer.output_shape),
-            x=str(40),
-            y=str(svg_height / 2 - 15),
+            x=str(effective_width / 2 + rect_height / 8),
+            y=str(svg_height / 2 + effective_height / 2 - rect_height / 8),
             textAnchor="start",
             fill="black"
           ),
           text(
             str(layer.input_shape),
-            x=str(-40),
-            y=str(svg_height / 2 + 5),
+            x=str(-effective_width / 2 ),
+            y=str(svg_height / 2 - effective_height / 2 + rect_height / 8),
             textAnchor="end",
             fill="black"
           )
@@ -134,11 +166,17 @@ class PyTorchModel(object):
         layer_offset += (effective_width / 2)
 
       elif 'Conv' in layer.type:
-        rect_width = np.interp(layer.input_shape, [0, max_input_size], [20, 150])
+        layer._channels = layer.channels
+        layer.channels = round(layer.channels / channel_factor)
+        rect_width = np.interp(layer.input_shape, [0, max_input_size], [min_conv_size, max_conv_size])
         group_height = rect_width + filter_offset_size * layer.channels
-
+        if max_group_height is None or group_height > max_group_height:
+          max_group_height = group_height
         vertical_offset = np.interp(group_height, [0, svg_height], [svg_height / 2, 0])
+        layer.vertical_offset = vertical_offset
+        layer.rect_width = rect_width
         rects = []
+        # print(group_height)
         for i in range(layer.channels):
 
           rects.append(
@@ -151,15 +189,46 @@ class PyTorchModel(object):
             )
 
         rects.append(
+          rect(
+            x=str((layer.channels - 1) * filter_offset_size + rect_width / 4),
+            y=str((layer.channels - 1) * filter_offset_size + rect_width / 4),
+            width=str(np.interp(layer.kernel_size, [0, max_input_size], [min_conv_size, max_conv_size])),
+            height=str(np.interp(layer.kernel_size, [0, max_input_size], [min_conv_size, max_conv_size])),
+            fill='none',
+            stroke='#222'
+          )
+        )
+        rects.append(
           text(
-            str(layer.channels) + ' @ ' + str(layer.input_shape) + ' X ' + str(layer.input_shape),
+            str(layer._channels) + ' @ ' + str(layer.input_shape) + ' X ' + str(layer.input_shape),
             x=str((rect_width / 2 + layer.channels * filter_offset_size) / 2),
             y=str(group_height + 40),
             textAnchor="middle",
             fill="black"
           )
         )
-        groups.append(g(rects, transform='translate(' + str(layer_offset) + ', ' + str(vertical_offset) + ')'))
+
+        if last_layer and 'Conv' in last_layer.type:
+          annotation_group.append(
+            line(
+              x1=str(last_offset + (last_layer.channels - 1) * filter_offset_size + last_layer.rect_width / 4 + (np.interp(last_layer.kernel_size, [0, max_input_size], [min_conv_size, max_conv_size]))),
+              y1=str(last_layer.vertical_offset + (last_layer.channels - 1) * filter_offset_size + last_layer.rect_width / 4),
+              x2=str(layer_offset + (layer.channels - 1) * filter_offset_size + rect_width / 2),
+              y2=str(vertical_offset + (layer.channels - 1) * filter_offset_size + rect_width / 2),
+              stroke='#222'
+            )
+          )
+          annotation_group.append(
+            line(
+              x1=str(last_offset + (last_layer.channels - 1) * filter_offset_size + last_layer.rect_width / 4 + (np.interp(last_layer.kernel_size, [0, max_input_size], [min_conv_size, max_conv_size]))),
+              y1=str(last_layer.vertical_offset + (last_layer.channels - 1) * filter_offset_size + last_layer.rect_width / 4 + (np.interp(last_layer.kernel_size, [0, max_input_size], [min_conv_size, max_conv_size]))),
+              x2=str(layer_offset + (layer.channels - 1) * filter_offset_size + rect_width / 2),
+              y2=str(vertical_offset + (layer.channels - 1) * filter_offset_size + rect_width / 2),
+              stroke='#222'
+            )
+          )
+
+        conv_group.append(g(rects, transform='translate(' + str(layer_offset) + ', ' + str(vertical_offset) + ')'))
         last_offset = layer_offset
         layer_offset += rect_width + layer.channels * filter_offset_size + 20
 
@@ -170,11 +239,12 @@ class PyTorchModel(object):
 
       last_layer = layer
 
-
+    groups = g(conv_group + annotation_group + linear_group)
     display(svg(
       groups,
       width=str(1.10 * layer_offset),
-      height=str(svg_height)
+      height=str(svg_height),
+      style={ 'overflow': 'visible', 'max-width': 'none', 'height': 'auto'}
     ))
 
     return ''
@@ -196,10 +266,16 @@ class PyTorchModel(object):
   # @Returns a list where each element is a tuple:
   def trace_net(self):
     trace = []
-    for child in self.network.children():
-        old_call = child.forward
-        new_method = self._mk_wrapper(trace, old_call)
-        child.forward = types.MethodType(new_method, child)
+    def check_children(arr):
+      for child in arr:
+          if 'Sequential' in child.__class__.__name__ or 'Block' in child.__class__.__name__ or '_DenseLayer' in child.__class__.__name__:
+            check_children(child.children())
+          else:
+            old_call = child.forward
+            new_method = self._mk_wrapper(trace, old_call)
+            child.forward = types.MethodType(new_method, child)
+
+    check_children(self.network.children())
     return trace
 
   # @param trace is list of raw layer output
@@ -208,7 +284,7 @@ class PyTorchModel(object):
 
       layer_info = [t[0] for t in trace]
       size_info = [t[1][0].shape for t in trace]
-      print(size_info)
+      # print(size_info)
 
       formatted = []
 
@@ -242,7 +318,10 @@ class PyTorchModel(object):
             stride = l.__dict__['stride'][0] # without [0], returns tuple - e.g., (3,)
 
         else:
-          raise Exception(f"Layer type not supported: {layer_type}")
+          # print(f"Layer type not supported: {layer_type}")
+          i += 1
+          continue
+          # raise Exception(f"Layer type not supported: {layer_type}")
 
         layer = Layer(layer_type, input_shape, output_shape, activation, channels, kernel, stride)
         formatted.append(layer)
